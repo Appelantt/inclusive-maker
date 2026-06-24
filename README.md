@@ -205,6 +205,7 @@ Résultat attendu : **8 passed**.
 - [Architecture du système](docs/architecture.md) — schéma et flux de données
 - [Guide d’installation matériel](docs/setup.md) — détails Unicorn et dépannage
 - [Journal de bord](docs/journal.md) — suivi des phases du projet
+- [Documentation externe et ressources](docs/external_resources.md) — liens officiels Unicorn, g.Pype, LSL, UDP, tutoriels
 
 ## 🤝 Contribuer
 
