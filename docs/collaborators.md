@@ -40,15 +40,26 @@ pip install -r requirements.txt
 
 ## 4. Vérifier que tout fonctionne
 
+### macOS / Linux
 ```bash
+PYTHONPATH=src python scripts/check_env.py
 PYTHONPATH=src pytest tests/ -v
 ```
 
-Tu dois voir **8 passed**.
+### Windows
+```cmd
+set PYTHONPATH=src
+python scripts\check_env.py
+pytest tests\ -v
+```
+
+Tu dois voir **environnement prêt** puis **8 passed**.
 
 ## 5. Lancer la démo
 
 Cette démo fonctionne sans casque. Elle génère des signaux synthétiques et envoie des commandes UDP.
+
+### macOS / Linux
 
 **Terminal 1 - serveur de commandes :**
 ```bash
@@ -58,6 +69,20 @@ PYTHONPATH=src python scripts/run_server.py
 **Terminal 2 - générateur de commandes cérébrales :**
 ```bash
 PYTHONPATH=src python scripts/demo_alpha_command.py
+```
+
+### Windows
+
+**Terminal 1 - serveur de commandes :**
+```cmd
+set PYTHONPATH=src
+python scripts\run_server.py
+```
+
+**Terminal 2 - générateur de commandes cérébrales :**
+```cmd
+set PYTHONPATH=src
+python scripts\demo_alpha_command.py
 ```
 
 Tu dois voir dans le terminal 1 les commandes `OPEN`, `CLOSE`, `IDLE` arriver.
