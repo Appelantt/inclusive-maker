@@ -202,7 +202,11 @@ Résultat attendu : **8 passed**.
 ## 📚 Documentation
 
 - [Guide des collaborateurs](docs/collaborators.md) — installation pas à pas pour le groupe
+- [Contexte du projet Inclusiv'Maker](docs/project_context.md) — défi, équipe, planning
+- [Guide d'interview](docs/interview_guide.md) — préparation de l'entretien avec Philippe
 - [Architecture du système](docs/architecture.md) — schéma et flux de données
+- [Cahier des charges](docs/requirements_spec.md) — objectifs et scénarios
+- [Template Hackster.io](docs/hackster_template.md) — canevas de documentation finale
 - [Guide d’installation matériel](docs/setup.md) — détails Unicorn et dépannage
 - [Journal de bord](docs/journal.md) — suivi des phases du projet
 - [Documentation externe et ressources](docs/external_resources.md) — liens officiels Unicorn, g.Pype, LSL, UDP, tutoriels
