@@ -126,7 +126,48 @@ pytest tests\ -v              # Windows
 
 ## 🎮 Tester sans matériel
 
-Tu peux tester toute la chaîne sans casque EEG. Il suffit de lancer deux terminaux :
+### Option 1 : interface graphique (recommandée)
+
+Lance l'application de tutoriel. Si **PySide6** est installé, elle s'ouvre avec une interface moderne. Sinon, elle bascule automatiquement sur **Tkinter** (natif Python).
+
+```bash
+# macOS / Linux
+PYTHONPATH=src python run_app.py
+
+# Windows
+set PYTHONPATH=src
+python run_app.py
+```
+
+L'interface comporte 4 étapes linéaires :
+1. **Accueil** — présentation du système
+2. **Calibration** — associer ses états mentaux aux commandes
+3. **Entraînement** — s'exercer sur OPEN / CLOSE / IDLE
+4. **Contrôle** — envoi en temps réel des commandes au gant simulé
+
+### Option 2 : assistant en ligne de commande
+
+```bash
+# macOS / Linux
+PYTHONPATH=src python scripts/calibration_assistant.py
+
+# Windows
+set PYTHONPATH=src
+python scripts\calibration_assistant.py
+```
+
+### Option 3 : démo automatique du pipeline complet
+
+```bash
+# macOS / Linux
+PYTHONPATH=src python scripts/demo_full_pipeline.py --duration 30
+
+# Windows
+set PYTHONPATH=src
+python scripts\demo_full_pipeline.py --duration 30
+```
+
+### Option 4 : serveur UDP + générateur de commandes
 
 **Terminal 1 - Serveur UDP** (reçoit les commandes) :
 
@@ -139,7 +180,18 @@ set PYTHONPATH=src
 python scripts\run_server.py
 ```
 
-**Terminal 2 - Générateur de commandes cérébrales** :
+**Terminal 2 - Mock gant** (affichage visuel) :
+
+```bash
+# macOS / Linux
+PYTHONPATH=src python hardware/mock_hand_server.py
+
+# Windows
+set PYTHONPATH=src
+python hardware\mock_hand_server.py
+```
+
+**Terminal 3 - Générateur de commandes cérébrales** :
 
 ```bash
 # macOS / Linux
@@ -148,14 +200,6 @@ PYTHONPATH=src python scripts/demo_alpha_command.py
 # Windows
 set PYTHONPATH=src
 python scripts\demo_alpha_command.py
-```
-
-Dans le terminal 1, tu dois voir défiler les commandes reçues :
-
-```
-[REÇU] {'action': 'OPEN', 'value': 1.0, 'label': 'open_hand', 'timestamp': ...}
-[REÇU] {'action': 'IDLE', 'value': 0.0, 'label': 'idle', 'timestamp': ...}
-[REÇU] {'action': 'CLOSE', 'value': -1.0, 'label': 'close_hand', 'timestamp': ...}
 ```
 
 ## 🔌 Utilisation avec le casque Unicorn Hybrid Black
@@ -197,7 +241,7 @@ set PYTHONPATH=src
 pytest tests\ -v
 ```
 
-Résultat attendu : **8 passed**.
+Résultat attendu : **11 passed**..
 
 ## 📚 Documentation
 
