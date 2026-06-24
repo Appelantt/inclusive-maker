@@ -1,0 +1,19 @@
+# Acquisition & streaming EEG
+gpype>=3.0.9
+pylsl>=1.16.0
+
+# Signal processing & ML
+numpy>=1.24.0
+scipy>=1.11.0
+scikit-learn>=1.3.0
+
+# Configuration & utilitaires
+pyyaml>=6.0
+
+# Visualisation (optionnel, notebooks)
+matplotlib>=3.7.0
+pyqtgraph>=0.13.0
+PySide6>=6.5.0
+
+# Tests
+pytest>=7.4.0

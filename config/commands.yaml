@@ -1,0 +1,31 @@
+# Mapping état mental détecté → commande envoyée à distance
+
+commands:
+  OPEN:
+    id: 1
+    label: "open_hand"
+    description: "Ouvrir la main / déployer l'orthèse"
+    payload:
+      action: "OPEN"
+      value: 1.0
+
+  CLOSE:
+    id: 2
+    label: "close_hand"
+    description: "Fermer la main / resserrer l'orthèse"
+    payload:
+      action: "CLOSE"
+      value: -1.0
+
+  IDLE:
+    id: 0
+    label: "idle"
+    description: "Aucune commande"
+    payload:
+      action: "IDLE"
+      value: 0.0
+
+thresholds:
+  # Exemple : commande OPEN si puissance alpha > CLOSE si alpha <
+  alpha_high_threshold: 1.5
+  alpha_low_threshold: 0.5

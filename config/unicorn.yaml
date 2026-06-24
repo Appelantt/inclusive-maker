@@ -1,0 +1,26 @@
+# Configuration spécifique au casque Unicorn Hybrid Black
+
+device:
+  name: "Unicorn Hybrid Black"
+  type: "hybrid_black"
+  connection: "bluetooth"
+
+channels:
+  eeg_count: 8
+  accel_count: 3
+  gyro_count: 3
+  aux_count: 3
+  total_acquired: 17
+
+sampling:
+  rate_hz: 250
+  resolution_bits: 24
+
+mapping:
+  eeg: [0, 1, 2, 3, 4, 5, 6, 7]
+  accel: [8, 9, 10]
+  gyro: [11, 12, 13]
+  aux: [14, 15, 16]
+
+windows:
+  lib_path: "~/Documents/gtec/Unicorn Suite/Hybrid Black/Unicorn Python/Lib"
