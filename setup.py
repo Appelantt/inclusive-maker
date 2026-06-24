@@ -1,10 +1,10 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="inclousive-maker",
+    name="inclusive-maker",
     version="0.1.0",
     description="Projet étudiant de commande cérébrale à distance",
-    author="Inclousive Maker Team",
+    author="inclusive Maker Team",
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     python_requires=">=3.10",

@@ -2,8 +2,8 @@
 
 import time
 
-from inclousive_maker.remote_command.server import CommandServer
-from inclousive_maker.remote_command.protocol import CommandPacket
+from inclusive_maker.remote_command.server import CommandServer
+from inclusive_maker.remote_command.protocol import CommandPacket
 
 
 def on_command(packet: CommandPacket) -> None:

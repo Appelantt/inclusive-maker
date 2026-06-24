@@ -1,7 +1,7 @@
-# Configuration générale du projet Inclousive Maker
+# Configuration générale du projet inclusive Maker
 
 project:
-  name: "inclousive-maker"
+  name: "inclusive-maker"
   version: "0.1.0"
   mode: "demo"  # demo | acquisition | remote
 
@@ -48,7 +48,7 @@ remote_command:
     host: "127.0.0.1"
     port: 8765
   lsl:
-    stream_name: "inclousive_maker_commands"
+    stream_name: "inclusive_maker_commands"
 
 logging:
   level: "INFO"

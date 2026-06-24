@@ -4,7 +4,7 @@ EEG_SAMPLING_RATE = 250  # Hz
 EEG_CHANNEL_COUNT = 8
 DEFAULT_UDP_IP = "127.0.0.1"
 DEFAULT_UDP_PORT = 56000
-DEFAULT_LSL_STREAM_NAME = "inclousive_maker_commands"
+DEFAULT_LSL_STREAM_NAME = "inclusive_maker_commands"
 
 BANDS = {
     "delta": (0.5, 4.0),

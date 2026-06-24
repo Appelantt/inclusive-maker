@@ -1,4 +1,4 @@
-# Hardware - Inclousive Maker
+# Hardware - inclusive Maker
 
 Code et schémas pour l'actionneur commandé à distance.
 

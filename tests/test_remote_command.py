@@ -3,9 +3,9 @@
 import json
 import time
 
-from inclousive_maker.remote_command.protocol import CommandPacket
-from inclousive_maker.remote_command.server import CommandServer
-from inclousive_maker.remote_command.client import CommandClient
+from inclusive_maker.remote_command.protocol import CommandPacket
+from inclusive_maker.remote_command.server import CommandServer
+from inclusive_maker.remote_command.client import CommandClient
 
 
 def test_command_packet_roundtrip():

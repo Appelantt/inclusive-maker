@@ -1,4 +1,4 @@
-# Inclousive Maker
+# inclusive Maker
 
 Projet étudiant de commande cérébrale à distance.
 
@@ -34,12 +34,12 @@ Développer une preuve de concept de **Brain-Computer Interface (BCI)** permetta
 ## 📁 Structure du projet
 
 ```
-inclousive-maker/
+inclusive-maker/
 ├── README.md
 ├── docs/               # Documentation et architecture
 ├── config/             # Fichiers de configuration
 ├── src/                # Code source Python
-│   └── inclousive_maker/
+│   └── inclusive_maker/
 │       ├── acquisition/
 │       ├── signal_processing/
 │       ├── brain_algo/

@@ -2,7 +2,7 @@
 
 ## Vue d'ensemble
 
-Inclousive Maker est composé de 4 modules principaux :
+inclusive Maker est composé de 4 modules principaux :
 
 ```
 +---------------+      +----------------------+      +----------------+      +------------------+
@@ -17,14 +17,14 @@ Inclousive Maker est composé de 4 modules principaux :
 
 ## Modules
 
-### 1. Acquisition (`src/inclousive_maker/acquisition/`)
+### 1. Acquisition (`src/inclusive_maker/acquisition/`)
 
 Responsabilité : obtenir les données EEG brutes.
 
 - `unicorn_connector.py` : connecte le casque Unicorn via g.Pype, ou un générateur synthétique.
 - Peut aussi recevoir un flux LSL/UDP externe.
 
-### 2. Traitement du signal (`src/inclousive_maker/signal_processing/`)
+### 2. Traitement du signal (`src/inclusive_maker/signal_processing/`)
 
 Responsabilité : nettoyer le signal et extraire des features.
 
@@ -32,7 +32,7 @@ Responsabilité : nettoyer le signal et extraire des features.
 - Extraction de bandes de puissance (delta, theta, alpha, beta).
 - Future : CSP, imagerie motrice, ERP, SSVEP.
 
-### 3. Algorithme de commande (`src/inclousive_maker/brain_algo/`)
+### 3. Algorithme de commande (`src/inclusive_maker/brain_algo/`)
 
 Responsabilité : décider d'une commande.
 
@@ -40,7 +40,7 @@ Responsabilité : décider d'une commande.
 - `command_mapper.py` : associe état → commande.
 - `classifier.py` : futur classifieur ML (scikit-learn).
 
-### 4. Commande à distance (`src/inclousive_maker/remote_command/`)
+### 4. Commande à distance (`src/inclusive_maker/remote_command/`)
 
 Responsabilité : transporter la commande vers un client.
 

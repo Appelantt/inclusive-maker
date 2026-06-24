@@ -1,4 +1,4 @@
-# Frontend - Inclousive Maker
+# Frontend - inclusive Maker
 
 Interface utilisateur pour le démonstrateur BCI.
 

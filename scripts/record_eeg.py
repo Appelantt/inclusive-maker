@@ -4,8 +4,8 @@ import time
 import csv
 from pathlib import Path
 
-from inclousive_maker.acquisition.unicorn_connector import UnicornConnector
-from inclousive_maker.shared.constants import EEG_SAMPLING_RATE
+from inclusive_maker.acquisition.unicorn_connector import UnicornConnector
+from inclusive_maker.shared.constants import EEG_SAMPLING_RATE
 
 
 def main() -> None:

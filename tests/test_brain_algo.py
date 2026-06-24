@@ -1,7 +1,7 @@
 """Tests de l'algorithme de commande cérébrale."""
 
-from inclousive_maker.brain_algo.mental_state_detector import MentalStateDetector
-from inclousive_maker.brain_algo.command_mapper import CommandMapper
+from inclusive_maker.brain_algo.mental_state_detector import MentalStateDetector
+from inclusive_maker.brain_algo.command_mapper import CommandMapper
 
 
 def test_open_state():

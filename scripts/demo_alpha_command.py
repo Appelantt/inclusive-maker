@@ -7,12 +7,12 @@ du projet sur n'importe quelle machine.
 import time
 import numpy as np
 
-from inclousive_maker.signal_processing.features import compute_all_bandpowers
-from inclousive_maker.brain_algo.mental_state_detector import MentalStateDetector
-from inclousive_maker.brain_algo.command_mapper import CommandMapper
-from inclousive_maker.remote_command.client import CommandClient
-from inclousive_maker.remote_command.protocol import CommandPacket
-from inclousive_maker.shared.constants import EEG_SAMPLING_RATE, BANDS
+from inclusive_maker.signal_processing.features import compute_all_bandpowers
+from inclusive_maker.brain_algo.mental_state_detector import MentalStateDetector
+from inclusive_maker.brain_algo.command_mapper import CommandMapper
+from inclusive_maker.remote_command.client import CommandClient
+from inclusive_maker.remote_command.protocol import CommandPacket
+from inclusive_maker.shared.constants import EEG_SAMPLING_RATE, BANDS
 
 
 def generate_synthetic_eeg(n_samples: int, state: str) -> np.ndarray:
@@ -46,7 +46,7 @@ def main() -> None:
     mapper = CommandMapper()
     client = CommandClient()
 
-    print("Démonstration Inclousive Maker - appuyez sur Ctrl+C pour arrêter")
+    print("Démonstration inclusive Maker - appuyez sur Ctrl+C pour arrêter")
     print("-" * 60)
 
     states_cycle = ["OPEN", "IDLE", "CLOSE", "IDLE"]

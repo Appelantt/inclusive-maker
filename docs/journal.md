@@ -1,4 +1,4 @@
-# Journal de bord - Inclousive Maker
+# Journal de bord - inclusive Maker
 
 ## Phase 1 : Structure et analyse
 

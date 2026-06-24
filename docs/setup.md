@@ -10,8 +10,8 @@
 
 ```bash
 # Cloner le repo
-git clone https://github.com/<ton-compte>/inclousive-maker.git
-cd inclousive-maker
+git clone https://github.com/<ton-compte>/inclusive-maker.git
+cd inclusive-maker
 
 # Créer un environnement virtuel
 python -m venv venv

@@ -3,10 +3,10 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "inclousive-maker"
+name = "inclusive-maker"
 version = "0.1.0"
 description = "Projet étudiant de commande cérébrale à distance"
-authors = [{name = "Inclousive Maker Team"}]
+authors = [{name = "inclusive Maker Team"}]
 requires-python = ">=3.10"
 dependencies = [
     "gpype>=3.0.9",

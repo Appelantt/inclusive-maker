@@ -1,7 +1,7 @@
 """Tests du traitement du signal."""
 
 import numpy as np
-from inclousive_maker.signal_processing.features import compute_bandpower, compute_all_bandpowers
+from inclusive_maker.signal_processing.features import compute_bandpower, compute_all_bandpowers
 
 
 def test_compute_bandpower_shape():

@@ -42,8 +42,8 @@ data/processed/*
 # Modèles entraînés (lourds)
 data/models/*
 !data/models/.gitkeep
-src/inclousive_maker/brain_algo/models/*
-!src/inclousive_maker/brain_algo/models/.gitkeep
+src/inclusive_maker/brain_algo/models/*
+!src/inclusive_maker/brain_algo/models/.gitkeep
 
 # Logs
 *.log
