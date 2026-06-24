@@ -1,0 +1,9 @@
+# Dépendances INTERFACE GRAPHIQUE de Inclusive Maker
+# Optionnelles - ne pas installer dans le CI car tres lourdes
+
+# Interface moderne avec Qt (fallback Tkinter natif si non installe)
+PySide6>=6.5.0
+
+# Visualisation scientifique (notebooks / dashboard avance)
+matplotlib>=3.7.0
+pyqtgraph>=0.13.0

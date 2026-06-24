@@ -1,0 +1,5 @@
+# Dépendances MATERIEL de Inclusive Maker
+# Installees uniquement sur la machine Windows connectee au casque Unicorn.
+
+# SDK g.tec pour acquisition EEG via Unicorn Hybrid Black
+gpype>=3.0.9

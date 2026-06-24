@@ -52,7 +52,13 @@ def check():
         import gpype
         print(f"  gpype: OK (version {gpype.__version__})")
     except ImportError:
-        print("  gpype: MANQUANT (non bloquant pour la demo)")
+        print("  gpype: MANQUANT (optionnel, installez requirements-hardware.txt pour le casque Unicorn)")
+
+    try:
+        import PySide6
+        print(f"  PySide6: OK")
+    except ImportError:
+        print("  PySide6: MANQUANT (optionnel, installez requirements-ui.txt ou utilisez l'interface Tkinter)")
 
     all_ok = all(checks.values()) and sys.version_info >= (3, 10)
     print("=" * 52)
