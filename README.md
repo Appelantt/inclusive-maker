@@ -54,15 +54,37 @@ inclusive-maker/
 
 ## 🚀 Démarrage rapide
 
+Pour les collaborateurs, voir le [guide complet](docs/collaborators.md).
+
+### Installation automatique (macOS / Linux)
+
 ```bash
-pip install -r requirements.txt
-python scripts/demo_alpha_command.py
+git clone https://github.com/Appelantt/inclusive-maker.git
+cd inclusive-maker
+bash scripts/install.sh
+```
+
+### Vérifier l'environnement
+
+```bash
+PYTHONPATH=src python scripts/check_env.py
+```
+
+### Lancer la démo sans matériel
+
+```bash
+# Terminal 1 : serveur de commandes
+PYTHONPATH=src python scripts/run_server.py
+
+# Terminal 2 : générateur de commandes cérébrales
+PYTHONPATH=src python scripts/demo_alpha_command.py
 ```
 
 ## 📚 Documentation
 
+- [Guide des collaborateurs](docs/collaborators.md)
 - [Architecture du système](docs/architecture.md)
-- [Guide d’installation](docs/setup.md)
+- [Guide d’installation matériel](docs/setup.md)
 - [Journal de bord](docs/journal.md)
 
 ## 📜 Licence
