@@ -1,8 +1,9 @@
-"""Tests du simulateur EEG."""
+"""Tests du simulateur EEG et du connecteur Unicorn."""
 
 import numpy as np
 
 from inclusive_maker.acquisition.generator import EEGGenerator
+from inclusive_maker.acquisition.unicorn_connector import UnicornConnector
 from inclusive_maker.shared.constants import EEG_SAMPLING_RATE, EEG_CHANNEL_COUNT
 
 
@@ -27,4 +28,13 @@ def test_generator_unknown_state_raises():
     except ValueError:
         pass
     else:
-        raise AssertionError("Une etat inconnu aurait du lever une ValueError")
+        raise AssertionError("Un etat inconnu aurait du lever une ValueError")
+
+
+def test_unicorn_connector_fallback_to_generator():
+    connector = UnicornConnector(use_generator=False)
+    source = connector.connect()
+    assert source is not None
+    assert isinstance(source, EEGGenerator)
+    assert connector.is_native() is False
+    connector.disconnect()

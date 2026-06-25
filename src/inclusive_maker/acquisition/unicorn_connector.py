@@ -1,4 +1,9 @@
-"""Connecteur pour le casque Unicorn Hybrid Black via g.Pype."""
+"""Connecteur pour le casque Unicorn Hybrid Black via g.Pype.
+
+Avec le SDK g.tec installé sur Windows, le connecteur utilise gp.HybridBlack.
+Sans le SDK natif, il bascule automatiquement sur le générateur interne du
+projet (EEGGenerator) pour permettre le développement et les tests sans matériel.
+"""
 
 from typing import Optional
 
@@ -7,6 +12,7 @@ try:
 except ImportError:
     gp = None
 
+from .generator import EEGGenerator
 from ..shared.logger import get_logger
 from ..shared.constants import EEG_SAMPLING_RATE, EEG_CHANNEL_COUNT
 
@@ -14,12 +20,7 @@ logger = get_logger(__name__)
 
 
 class UnicornConnector:
-    """Gère la connexion au casque Unicorn Hybrid Black.
-
-    Sous Windows avec Unicorn Suite installé, utilise gp.HybridBlack.
-    Sinon, bascule automatiquement sur un générateur synthétique pour le
-    développement / démonstration.
-    """
+    """Gère la connexion au casque Unicorn Hybrid Black avec fallback simulateur."""
 
     def __init__(
         self,
@@ -32,34 +33,46 @@ class UnicornConnector:
         self.include_accel = include_accel
         self.include_gyro = include_gyro
         self.include_aux = include_aux
-        self._source = None
-        self._pipeline = None
+        self._source: Optional[object] = None
+        self._is_native = False
 
     def connect(self) -> object:
-        """Initialise la source de données EEG."""
-        if self.use_generator or gp is None:
-            logger.info("Mode générateur synthétique activé.")
-            self._source = gp.Generator(
-                sampling_rate=EEG_SAMPLING_RATE,
-                channel_count=EEG_CHANNEL_COUNT,
-                signal_frequency=10,
-                signal_amplitude=10,
-                noise_amplitude=5,
-            ) if gp else None
-        else:
-            logger.info("Connexion au casque Unicorn Hybrid Black...")
-            self._source = gp.HybridBlack(
-                include_accel=self.include_accel,
-                include_gyro=self.include_gyro,
-                include_aux=self.include_aux,
-            )
+        """Initialise la source de données EEG.
+
+        Retourne:
+            - gp.HybridBlack si g.Pype et le SDK natif sont disponibles.
+            - EEGGenerator sinon.
+        """
+        if not self.use_generator and gp is not None:
+            try:
+                logger.info("Connexion au casque Unicorn Hybrid Black...")
+                self._source = gp.HybridBlack(
+                    include_accel=self.include_accel,
+                    include_gyro=self.include_gyro,
+                    include_aux=self.include_aux,
+                )
+                self._is_native = True
+                logger.info("Casque Unicorn connecté.")
+                return self._source
+            except Exception as e:
+                logger.warning(f"Connexion Unicorn impossible : {e}")
+                logger.warning("Basculement sur le générateur synthétique interne.")
+
+        logger.info("Mode générateur synthétique interne activé.")
+        self._source = EEGGenerator("IDLE")
+        self._is_native = False
         return self._source
 
     def disconnect(self) -> None:
         """Libère la source EEG."""
         self._source = None
+        self._is_native = False
         logger.info("Source EEG déconnectée.")
 
     def get_source(self) -> Optional[object]:
         """Retourne la source active."""
         return self._source
+
+    def is_native(self) -> bool:
+        """True si la source est le vrai casque Unicorn, False si simulateur."""
+        return self._is_native
