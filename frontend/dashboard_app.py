@@ -101,11 +101,16 @@ class DashboardApp(QMainWindow):
         self.source_label = QLabel("Source : SIMULATEUR")
         self.source_label.setFont(QFont("Arial", 12, QFont.Bold))
         self.source_label.setAlignment(Qt.AlignCenter)
+        mode = self.eeg_source.get_mode()
         if self.eeg_source.is_native():
             self.source_label.setStyleSheet("color: #2E7D32;")
-            self.source_label.setText("Source : CASQUE UNICORN")
+            if mode == "lsl":
+                self.source_label.setText("Source : CASQUE UNICORN (LSL)")
+            else:
+                self.source_label.setText("Source : CASQUE UNICORN")
         else:
             self.source_label.setStyleSheet("color: #757575;")
+            self.source_label.setText("Source : SIMULATEUR")
         left.addWidget(self.source_label)
 
         btn_layout = QHBoxLayout()
