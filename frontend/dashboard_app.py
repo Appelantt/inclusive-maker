@@ -12,7 +12,7 @@ from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QFont
 import pyqtgraph as pg
 
-from inclusive_maker.acquisition.generator import EEGGenerator
+from inclusive_maker.acquisition.eeg_source import UnifiedEEGSource
 from inclusive_maker.signal_processing.features import compute_all_bandpowers
 from inclusive_maker.brain_algo.mental_state_detector import MentalStateDetector
 from inclusive_maker.brain_algo.command_mapper import CommandMapper
@@ -31,7 +31,7 @@ class DashboardApp(QMainWindow):
         super().__init__()
         self.setWindowTitle("Inclusive Maker - Dashboard temps reel")
         self.resize(1100, 750)
-        self.eeg_generator = EEGGenerator("IDLE")
+        self.eeg_source = UnifiedEEGSource()
         self.detector = MentalStateDetector()
         self.mapper = CommandMapper()
         self._client = None
@@ -98,6 +98,16 @@ class DashboardApp(QMainWindow):
         self.detail_label.setAlignment(Qt.AlignCenter)
         left.addWidget(self.detail_label)
 
+        self.source_label = QLabel("Source : SIMULATEUR")
+        self.source_label.setFont(QFont("Arial", 12, QFont.Bold))
+        self.source_label.setAlignment(Qt.AlignCenter)
+        if self.eeg_source.is_native():
+            self.source_label.setStyleSheet("color: #2E7D32;")
+            self.source_label.setText("Source : CASQUE UNICORN")
+        else:
+            self.source_label.setStyleSheet("color: #757575;")
+        left.addWidget(self.source_label)
+
         btn_layout = QHBoxLayout()
         self.btn_start = QPushButton(" Demarrer")
         self.btn_start.setFont(QFont("Arial", 16, QFont.Bold))
@@ -155,8 +165,9 @@ class DashboardApp(QMainWindow):
 
     def _update(self):
         try:
-            self.eeg_generator.set_state(self._next_demo_state())
-            eeg = self.eeg_generator.read_window(1.0)
+            if not self.eeg_source.is_native():
+                self.eeg_source.set_state(self._next_demo_state())
+            eeg = self.eeg_source.read_window(1.0)
             features = compute_all_bandpowers(eeg, EEG_SAMPLING_RATE, BANDS)
             state = self.detector.detect(features)
             alpha = features["alpha"]
@@ -207,12 +218,14 @@ class DashboardApp(QMainWindow):
 
     def closeEvent(self, event):
         self.timer.stop()
+        self.timer.stop()
         client = self._get_client()
         if client:
             try:
                 client.close()
             except Exception:
                 pass
+        self.eeg_source.disconnect()
         event.accept()
 
 
