@@ -63,9 +63,9 @@ def check():
     all_ok = all(checks.values()) and sys.version_info >= (3, 10)
     print("=" * 52)
     if all_ok:
-        print("✅ Environnement pret")
+        print("[OK] Environnement pret")
     else:
-        print("⚠️  Environnement incomplet - installe les dependances manquantes")
+        print("[WARN] Environnement incomplet - installe les dependances manquantes")
         sys.exit(1)
 
 

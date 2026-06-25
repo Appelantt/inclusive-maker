@@ -58,8 +58,8 @@ class TrainingApp(QMainWindow):
 
         self.simulator = EEGSimulator()
         self.detector = MentalStateDetector(
-            alpha_high_threshold=15.0,
-            alpha_low_threshold=2.0,
+            open_ratio=4.0,
+            close_ratio=8.0,
             smoothing_window=3,
         )
         self.mapper = CommandMapper()

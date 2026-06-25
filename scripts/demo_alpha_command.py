@@ -39,8 +39,8 @@ def generate_synthetic_eeg(n_samples: int, state: str) -> np.ndarray:
 
 def main() -> None:
     detector = MentalStateDetector(
-        alpha_high_threshold=10.0,
-        alpha_low_threshold=2.0,
+        open_ratio=4.0,
+        close_ratio=8.0,
         smoothing_window=3,
     )
     mapper = CommandMapper()
