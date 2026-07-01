@@ -1,32 +1,14 @@
-"""Traduit un état mental détecté en commande à envoyer."""
+from pathlib import Path
 
-from typing import Any
+p = Path(r'C:\Users\Admin\Desktop\inclusive-maker\src\inclusive_maker\brain_algo\command_mapper.py')
+text = p.read_text(encoding='utf-8')
 
-from ..shared.constants import DEFAULT_UDP_IP, DEFAULT_UDP_PORT
+# Supprimer l'ancien __init__ et map, puis ajouter les nouveaux profils
+cut = text.find('    def __init__(self, commands:')
+if cut == -1:
+    raise RuntimeError('pattern not found')
 
-
-class CommandMapper:
-    """Associe un état mental à une payload de commande."""
-
-    DEFAULT_COMMANDS = {
-        "OPEN": {
-            "action": "OPEN",
-            "value": 1.0,
-            "label": "open_hand",
-        },
-        "CLOSE": {
-            "action": "CLOSE",
-            "value": -1.0,
-            "label": "close_hand",
-        },
-        "IDLE": {
-            "action": "IDLE",
-            "value": 0.0,
-            "label": "idle",
-        },
-    }
-
-
+new_tail = '''
     # Logique inversée pour le cerf-volant :
     # - FERMER = tenir la barre / piloter / "s'amuser"
     # - OUVRIR = lâcher / poser le cerf-volant / pause
@@ -88,3 +70,7 @@ class CommandMapper:
     def map(self, state: str) -> dict[str, Any]:
         """Retourne la commande associée à l'état."""
         return self.commands.get(state, self.commands["IDLE"]).copy()
+'''
+
+p.write_text(text[:cut] + new_tail, encoding='utf-8')
+print('command_mapper.py updated')

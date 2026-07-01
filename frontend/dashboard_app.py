@@ -161,6 +161,10 @@ class DashboardApp(QMainWindow):
         self.btn_start.setEnabled(False)
         self.btn_stop.setEnabled(True)
         self.log.append("Dashboard demarre.")
+        mode = self.eeg_source.get_mode()
+        logger.info(f"=== Dashboard demarre | Source EEG: {mode} | "
+                    f"ML: {self.detector.uses_ml} | Profil: {self.mapper.profile} ===")
+        self._last_logged_state = None
 
     def _stop(self):
         self.timer.stop()
@@ -177,6 +181,10 @@ class DashboardApp(QMainWindow):
             state = self.detector.detect(features)
             alpha = features["alpha"]
             beta = features["beta"]
+            # Logger uniquement quand l'etat change (evite le spam)
+            if state != getattr(self, "_last_logged_state", None):
+                logger.info(f"Etat mental detecte: {state} | alpha={alpha:.1f} beta={beta:.1f}")
+                self._last_logged_state = state
             self.alpha_history.append(alpha)
             self.beta_history.append(beta)
             value = {"OPEN": 1.0, "CLOSE": -1.0, "IDLE": 0.0}.get(state, 0.0)
@@ -200,12 +208,14 @@ class DashboardApp(QMainWindow):
             if client:
                 try:
                     client.send(packet)
+                    logger.info(f"Commande envoyee (UDP): action={cmd['action']} value={cmd['value']:.1f} label={cmd['label']}")
                 except Exception as e:
                     logger.warning(f"Erreur envoi UDP : {e}")
             lsl = self._get_lsl()
             if lsl:
                 try:
                     lsl.send(packet)
+                    logger.info(f"Commande envoyee (LSL): action={cmd['action']} label={cmd['label']}")
                 except Exception as e:
                     logger.warning(f"Erreur envoi LSL : {e}")
             self.log.append(f"[{time.strftime('%H:%M:%S')}] {state} | a={alpha:.1f} b={beta:.1f}")
