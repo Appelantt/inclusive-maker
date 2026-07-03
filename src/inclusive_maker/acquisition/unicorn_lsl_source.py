@@ -1,14 +1,20 @@
-"""Source EEG basee sur le stream LSL de Unicorn Recorder.
+"""Source EEG basee sur le stream LSL du casque Unicorn.
 
-Quand Unicorn Suite / Unicorn Recorder est installe mais que gpype ne trouve pas
-les DLL natives, on peut recuperer les donnees EEG via le protocole Lab Streaming
-Layer (LSL). Unicorn Recorder peut streamer en LSL par defaut.
+Le casque Unicorn Hybrid Black communique en Bluetooth classique (port COM
+serie). Le moyen le plus fiable de recuperer ses donnees dans l'application est
+l'application officielle "Unicorn LSL" (UnicornLSL.exe, fournie avec Unicorn
+Suite) : elle lit le casque et le diffuse en Lab Streaming Layer (LSL).
+
+Cette source resout le flux LSL de maniere robuste : elle accepte n'importe quel
+flux ressemblant au casque (type EEG, nom contenant "Unicorn"/"UN-", ou 8+
+canaux a ~250 Hz), car l'app Unicorn LSL n'etiquette pas toujours le flux en
+type "EEG".
 """
 
 from typing import Optional
 
 import numpy as np
-from pylsl import StreamInlet, resolve_byprop
+from pylsl import StreamInlet, resolve_streams
 
 from ..shared.constants import EEG_SAMPLING_RATE, EEG_CHANNEL_COUNT
 from ..shared.logger import get_logger
@@ -17,7 +23,7 @@ logger = get_logger(__name__)
 
 
 class UnicornLSLSource:
-    """Connecte au stream EEG LSL emis par Unicorn Recorder."""
+    """Connecte au stream EEG LSL emis par l'app Unicorn LSL (ou Unicorn Recorder)."""
 
     def __init__(self, timeout: float = 5.0):
         self.timeout = timeout
@@ -25,50 +31,82 @@ class UnicornLSLSource:
         self._info = None
         self._connect()
 
-    def _connect(self) -> None:
-        logger.info("Recherche d'un stream EEG LSL de Unicorn Recorder...")
+    @staticmethod
+    def _looks_like_unicorn(info) -> bool:
+        """Heuristique : ce flux LSL ressemble-t-il au casque Unicorn ?"""
         try:
-            streams = resolve_byprop("type", "EEG", timeout=self.timeout)
+            name = (info.name() or "").lower()
+            stype = (info.type() or "").lower()
+            srate = info.nominal_srate()
+            nch = info.channel_count()
+        except Exception:
+            return False
+        if "eeg" in stype:
+            return True
+        if "unicorn" in name or name.startswith("un-"):
+            return True
+        # Casque Unicorn : 250 Hz, au moins 8 canaux EEG (souvent 8 ou 17).
+        if nch >= EEG_CHANNEL_COUNT and 240 <= srate <= 260:
+            return True
+        return False
+
+    def _connect(self) -> None:
+        logger.info("Recherche d'un flux LSL du casque Unicorn (app Unicorn LSL)...")
+        try:
+            streams = resolve_streams(wait_time=self.timeout)
         except Exception as e:
             logger.warning(f"Erreur lors de la resolution LSL : {e}")
             streams = []
 
         if not streams:
-            raise RuntimeError("Aucun stream EEG LSL trouve. Verifie qu'Unicorn Recorder est ouvert et streaming.")
+            raise RuntimeError(
+                "Aucun flux LSL trouve. Ouvre l'application 'Unicorn LSL' "
+                "(UnicornLSL.exe), selectionne le casque et clique sur 'Open' / "
+                "'Start' pour lancer le streaming, puis reconnecte."
+            )
 
-        # Choisir le premier stream EEG (on suppose qu'il n'y en a qu'un)
-        self._info = streams[0]
-        self._inlet = StreamInlet(self._info)
+        # Choisir le meilleur candidat parmi les flux disponibles.
+        candidates = [s for s in streams if self._looks_like_unicorn(s)]
+        chosen = candidates[0] if candidates else streams[0]
+
+        if not candidates:
+            logger.warning(
+                f"Aucun flux ne ressemble clairement au casque Unicorn ; "
+                f"utilisation du premier flux disponible : {chosen.name()}"
+            )
+
+        self._info = chosen
+        self._inlet = StreamInlet(chosen, max_buflen=360)
         logger.info(
-            f"Stream EEG LSL connecte : {self._info.name()} "
-            f"({self._info.channel_count()} canaux, {self._info.nominal_srate()} Hz)"
+            f"Flux LSL connecte : {chosen.name()} "
+            f"(type={chosen.type()}, {chosen.channel_count()} canaux, "
+            f"{chosen.nominal_srate()} Hz)"
         )
 
     def read_window(self, duration_seconds: float) -> np.ndarray:
-        """Lit une fenetre EEG de duree donnee depuis le stream LSL."""
+        """Lit une fenetre EEG de duree donnee depuis le flux LSL."""
         n_samples = int(duration_seconds * EEG_SAMPLING_RATE)
-        data, _ = self._inlet.pull_chunk(timeout= duration_seconds + 1.0, max_samples=n_samples)
+        data, _ = self._inlet.pull_chunk(timeout=duration_seconds + 1.0, max_samples=n_samples)
         arr = np.array(data)
         if arr.size == 0:
             return np.zeros((n_samples, EEG_CHANNEL_COUNT))
-        # Garder uniquement les 8 canaux EEG
+        # Garder uniquement les 8 premiers canaux (EEG).
         if arr.shape[1] > EEG_CHANNEL_COUNT:
             arr = arr[:, :EEG_CHANNEL_COUNT]
-        # Pad si pas assez d'echantillons
+        # Completer si pas assez d'echantillons.
         if arr.shape[0] < n_samples:
             pad = np.zeros((n_samples - arr.shape[0], arr.shape[1]))
             arr = np.vstack([arr, pad])
         return arr
 
     def set_state(self, state: str) -> None:
-        """Inactif pour le stream LSL reel (l'etat est determine par l'utilisateur)."""
+        """Inactif pour le flux LSL reel (l'etat vient du cerveau de l'utilisateur)."""
         pass
 
     def is_native(self) -> bool:
         return True
 
     def disconnect(self) -> None:
-        # StreamInlet n'a pas de methode close() dans pylsl;
-        # il est libere automatiquement lors du garbage collection.
+        # StreamInlet n'a pas de close() dans pylsl ; libere au garbage collection.
         self._inlet = None
-        logger.info("Stream EEG LSL deconnecte.")
+        logger.info("Flux LSL Unicorn deconnecte.")

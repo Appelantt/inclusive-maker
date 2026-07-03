@@ -77,3 +77,10 @@ class EEGGenerator:
         """
         n_samples = int(duration_seconds * EEG_SAMPLING_RATE)
         return self.read(n_samples)
+
+    def is_native(self) -> bool:
+        return False
+
+    def disconnect(self) -> None:
+        """Aucune ressource à libérer pour le simulateur (no-op)."""
+        pass

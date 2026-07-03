@@ -1,5 +1,8 @@
 """Dashboard moderne avec graphiques temps reel pour Inclusive Maker."""
 
+import glob
+import os
+import subprocess
 import sys
 import time
 from collections import deque
@@ -31,7 +34,7 @@ class DashboardApp(QMainWindow):
         super().__init__()
         self.setWindowTitle("Inclusive Maker - Dashboard temps reel")
         self.resize(1100, 750)
-        self.eeg_source = UnifiedEEGSource()
+        self.eeg_source = None
         self.detector = MentalStateDetector()
         self.mapper = CommandMapper()
         self._client = None
@@ -43,6 +46,26 @@ class DashboardApp(QMainWindow):
         self._build_ui()
         self.timer = QTimer()
         self.timer.timeout.connect(self._update)
+        # La connexion a la source EEG (recherche LSL) peut prendre plusieurs
+        # secondes. On l'effectue APRES l'affichage de la fenetre pour eviter que
+        # l'application paraisse gelee ("Ne repond pas") au demarrage.
+        self.source_label.setText("Source : connexion en cours...")
+        self.source_label.setStyleSheet("color: #F9A825;")
+        self.btn_start.setEnabled(False)
+        QTimer.singleShot(150, self._initial_connect)
+
+    def _initial_connect(self):
+        """Cree la source EEG apres l'affichage de la fenetre."""
+        self.log.append("Recherche de la source EEG (casque via Unicorn LSL)...")
+        QApplication.processEvents()
+        try:
+            self.eeg_source = UnifiedEEGSource()
+        except Exception as e:
+            logger.exception("Erreur creation de la source EEG")
+            self.log.append(f"[ERREUR] Impossible de creer la source EEG : {e}")
+            self.eeg_source = None
+        self.btn_start.setEnabled(True)
+        self._refresh_source_label()
 
     def _get_client(self):
         if self._client is None:
@@ -101,16 +124,6 @@ class DashboardApp(QMainWindow):
         self.source_label = QLabel("Source : SIMULATEUR")
         self.source_label.setFont(QFont("Arial", 12, QFont.Bold))
         self.source_label.setAlignment(Qt.AlignCenter)
-        mode = self.eeg_source.get_mode()
-        if self.eeg_source.is_native():
-            self.source_label.setStyleSheet("color: #2E7D32;")
-            if mode == "lsl":
-                self.source_label.setText("Source : CASQUE UNICORN (LSL)")
-            else:
-                self.source_label.setText("Source : CASQUE UNICORN")
-        else:
-            self.source_label.setStyleSheet("color: #757575;")
-            self.source_label.setText("Source : SIMULATEUR")
         left.addWidget(self.source_label)
 
         btn_layout = QHBoxLayout()
@@ -126,6 +139,19 @@ class DashboardApp(QMainWindow):
         btn_layout.addWidget(self.btn_start)
         btn_layout.addWidget(self.btn_stop)
         left.addLayout(btn_layout)
+
+        casque_layout = QHBoxLayout()
+        self.btn_open_lsl = QPushButton(" Ouvrir Unicorn LSL")
+        self.btn_open_lsl.setFont(QFont("Arial", 12, QFont.Bold))
+        self.btn_open_lsl.setStyleSheet("background-color: #37474F; color: white; padding: 10px; border-radius: 10px;")
+        self.btn_open_lsl.clicked.connect(self._open_unicorn_lsl)
+        self.btn_reconnect = QPushButton(" Reconnecter le casque")
+        self.btn_reconnect.setFont(QFont("Arial", 12, QFont.Bold))
+        self.btn_reconnect.setStyleSheet("background-color: #1565C0; color: white; padding: 10px; border-radius: 10px;")
+        self.btn_reconnect.clicked.connect(self._reconnect)
+        casque_layout.addWidget(self.btn_open_lsl)
+        casque_layout.addWidget(self.btn_reconnect)
+        left.addLayout(casque_layout)
 
         self.log = QTextEdit()
         self.log.setReadOnly(True)
@@ -156,7 +182,95 @@ class DashboardApp(QMainWindow):
         right_widget.setLayout(right)
         main_layout.addWidget(right_widget)
 
+    def _refresh_source_label(self):
+        """Met a jour l'affichage de la source EEG et la raison eventuelle du fallback."""
+        if self.eeg_source is None:
+            self.source_label.setStyleSheet("color: #C62828;")
+            self.source_label.setText("Source : ERREUR (aucune source EEG)")
+            return
+        mode = self.eeg_source.get_mode()
+        detail = self.eeg_source.get_status_detail()
+        if self.eeg_source.is_native():
+            self.source_label.setStyleSheet("color: #2E7D32;")
+            if mode == "lsl":
+                self.source_label.setText("Source : CASQUE UNICORN (LSL) - connecte")
+            elif mode == "gtec_ble":
+                self.source_label.setText("Source : CASQUE UNICORN (Bluetooth) - connecte")
+            else:
+                self.source_label.setText("Source : CASQUE UNICORN - connecte")
+            self.log.append(f"[OK] {detail}")
+        else:
+            self.source_label.setStyleSheet("color: #C62828;")
+            self.source_label.setText("Source : SIMULATEUR (casque non connecte)")
+            if detail:
+                self.log.append(f"[SIMULATEUR] {detail}")
+            self.log.append(
+                "Astuce : ouvre 'Unicorn LSL' (bouton ci-dessous), selectionne le casque "
+                "(UN-...), clique Open puis Start, puis clique 'Reconnecter le casque'."
+            )
+
+    def _find_unicorn_lsl(self):
+        """Cherche UnicornLSL.exe dans les emplacements connus d'Unicorn Suite."""
+        patterns = [
+            os.path.join(os.path.expanduser("~"), "Documents", "gtec", "Unicorn Suite",
+                         "Hybrid Black", "Unicorn LSL", "UnicornLSL.exe"),
+            r"C:\Program Files\gtec\Unicorn Suite\Hybrid Black\Unicorn LSL\UnicornLSL.exe",
+            os.path.join(os.path.expanduser("~"), "Documents", "gtec", "**", "UnicornLSL.exe"),
+            r"C:\Program Files\gtec\**\UnicornLSL.exe",
+        ]
+        for pat in patterns:
+            for match in glob.glob(pat, recursive=True):
+                if os.path.isfile(match):
+                    return match
+        return None
+
+    def _open_unicorn_lsl(self):
+        """Lance l'application Unicorn LSL pour demarrer le streaming du casque."""
+        exe = self._find_unicorn_lsl()
+        if not exe:
+            self.log.append(
+                "[X] UnicornLSL.exe introuvable. Ouvre-le manuellement depuis "
+                "Unicorn Suite, puis clique 'Reconnecter le casque'."
+            )
+            return
+        try:
+            subprocess.Popen([exe], cwd=os.path.dirname(exe))
+            self.log.append(
+                "Unicorn LSL lance. Dans sa fenetre : selectionne le casque (UN-...), "
+                "clique 'Open' puis 'Start', puis reviens cliquer 'Reconnecter le casque'."
+            )
+        except Exception as e:
+            logger.exception("Echec lancement UnicornLSL")
+            self.log.append(f"[ERREUR] Impossible de lancer Unicorn LSL : {e}")
+
+    def _reconnect(self):
+        """Retente la connexion au casque sans redemarrer l'application."""
+        was_running = self.timer.isActive()
+        self.timer.stop()
+        self.log.append("--- Tentative de reconnexion au casque... ---")
+        self.btn_reconnect.setEnabled(False)
+        self.btn_reconnect.setText(" Reconnexion en cours...")
+        QApplication.processEvents()
+        try:
+            if self.eeg_source is None:
+                self.eeg_source = UnifiedEEGSource()
+            else:
+                self.eeg_source.reconnect()
+        except Exception as e:
+            logger.exception("Erreur pendant la reconnexion")
+            self.log.append(f"[ERREUR reconnexion] {e}")
+        self.btn_reconnect.setEnabled(True)
+        self.btn_reconnect.setText(" Reconnecter le casque")
+        self._refresh_source_label()
+        mode = self.eeg_source.get_mode() if self.eeg_source else "aucune"
+        logger.info(f"Reconnexion terminee | Source EEG: {mode}")
+        if was_running and self.eeg_source is not None:
+            self.timer.start(250)
+
     def _start(self):
+        if self.eeg_source is None:
+            self.log.append("[X] Aucune source EEG. Clique 'Reconnecter le casque' d'abord.")
+            return
         self.timer.start(250)
         self.btn_start.setEnabled(False)
         self.btn_stop.setEnabled(True)
@@ -173,6 +287,8 @@ class DashboardApp(QMainWindow):
         self.log.append("Dashboard arrete.")
 
     def _update(self):
+        if self.eeg_source is None:
+            return
         try:
             if not self.eeg_source.is_native():
                 self.eeg_source.set_state(self._next_demo_state())
@@ -233,14 +349,17 @@ class DashboardApp(QMainWindow):
 
     def closeEvent(self, event):
         self.timer.stop()
-        self.timer.stop()
         client = self._get_client()
         if client:
             try:
                 client.close()
             except Exception:
                 pass
-        self.eeg_source.disconnect()
+        if self.eeg_source is not None:
+            try:
+                self.eeg_source.disconnect()
+            except Exception:
+                pass
         event.accept()
 
 
