@@ -228,6 +228,56 @@ L'acquisition directe du casque Unicorn via g.Pype nécessite :
 
 > 💡 Sous macOS ou Linux, tu peux quand même développer grâce au **mode démonstration** (`use_generator: true`) ou en recevant un flux LSL/UDP depuis une autre machine Windows.
 
+## 🧠 Pipeline BCI temps réel via g.Pype (casque + calibration)
+
+En plus du dashboard historique (voie LSL), le projet dispose d'un **pipeline BCI complet 100 % g.Pype** conforme au cahier des charges (FP1), avec **calibration sur le cerveau de l'utilisateur** (FP1 + FC3).
+
+**Ce qu'il fait** (script [`scripts/gpype_pipeline.py`](scripts/gpype_pipeline.py)) :
+
+```
+casque Unicorn → Bandpass 1-30 Hz + Notch 50/60 Hz  (EEG propre)
+              → canal moteur C3
+              → puissance ALPHA (8-12 Hz) et BÊTA (13-30 Hz)  (carré + moyenne glissante 1 s)
+              → commande (bêta − alpha)/(alpha + bêta) ∈ [-1, 1]
+              → ÉTAT binaire : +1 = FERMER, -1 = OUVRIR  (2 fonctions, pour la carte Arduino)
+              → affichage temps réel / enregistrement CSV
+```
+
+Disposition des électrodes (index 0-7) : `Fz C3 Cz C4 Pz PO7 PO8 Oz`. On utilise **C3** (main droite).
+
+### Prérequis (Windows)
+
+- **Unicorn Suite** installé **avec le module « Unicorn Python » (UnicornPy)**.
+- Casque allumé, appairé, et **Unicorn Suite / LSL / Recorder fermés** (le casque ne se prend qu'à un logiciel à la fois).
+
+> ℹ️ g.Pype se lance depuis n'importe quel terminal grâce au *monkeypatch officiel g.tec* (`Node._is_executed_in_ide = lambda self: True`) — pas besoin d'IDE particulier ni de licence Runtime.
+
+### Lancer l'affichage temps réel
+
+```powershell
+cd inclusive-maker
+$env:PYTHONPATH="src"; venv\Scripts\python.exe scripts\gpype_pipeline.py
+```
+
+Fenêtre avec 4 courbes : **alpha%**, **bêta%**, **commande**, et **ÉTAT** (+1 fermé / -1 ouvert).
+Options : `--sim` (sans casque), `--record --seconds 10` (enregistre un CSV).
+
+### Calibrer sur son cerveau (recommandé)
+
+Le script [`scripts/calibrate.py`](scripts/calibrate.py) enregistre tes puissances alpha/bêta pendant que tu imagines **fermer** puis **ouvrir** la main, entraîne un **classifieur LDA** sur *tes* données, et sauvegarde `config/calibration.json`. Le pipeline le charge alors automatiquement (état adapté à toi au lieu d'un seuil générique).
+
+```powershell
+$env:PYTHONPATH="src"; venv\Scripts\python.exe scripts\calibrate.py      # ~2 min, casque porté
+```
+
+### Diagnostic de connexion casque
+
+```powershell
+$env:PYTHONPATH="src"; venv\Scripts\python.exe scripts\diagnose_connection.py
+```
+
+Voir [docs/gpype_bci.md](docs/gpype_bci.md) pour le détail complet (architecture, dépannage Bluetooth, calibration).
+
 ## 🧪 Tests
 
 Les tests peuvent être lancés sur n'importe quel OS sans matériel :
@@ -241,7 +291,7 @@ set PYTHONPATH=src
 pytest tests\ -v
 ```
 
-Résultat attendu : **11 passed**..
+Résultat attendu : **14 passed**.
 
 ## 📚 Documentation
 
@@ -254,6 +304,7 @@ Résultat attendu : **11 passed**..
 - [Guide d’installation matériel](docs/setup.md) — détails Unicorn et dépannage
 - [Journal de bord](docs/journal.md) — suivi des phases du projet
 - [Documentation externe et ressources](docs/external_resources.md) — liens officiels Unicorn, g.Pype, LSL, UDP, tutoriels
+- **[Pipeline BCI g.Pype + calibration](docs/gpype_bci.md)** — chaîne temps réel casque → ouvrir/fermer, calibration LDA, dépannage
 
 ## 🤝 Contribuer
 
