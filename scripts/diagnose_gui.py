@@ -43,6 +43,11 @@ FS = 250.0
 MOTOR_CHANNEL = 1  # C3 = canal 1 (cortex moteur gauche = main droite)
 CALIB_PATH = os.path.join(os.path.dirname(__file__), "..", "config", "calibration.json")
 
+# Canaux analyses pour le BCI (alpha/beta)
+# C3 = main droite, C4 = main gauche, Cz = reference, Fz = frontal
+ANALYZED_CHANNELS = [0, 1, 2, 3]  # Fz, C3, Cz, C4
+ANALYZED_NAMES = ["Fz", "C3", "Cz", "C4"]
+
 ELECTRODE_POS = {
     "Fz":  (0.50, 0.18),
     "C3":  (0.26, 0.46),
@@ -94,11 +99,14 @@ class HandStateWidget(QtWidgets.QWidget):
         self._beta = 0.0
         self._command = 0.0
 
-    def set_state(self, state, alpha=0.0, beta=0.0, command=0.0):
+    def set_state(self, state, alpha=0.0, beta=0.0, command=0.0,
+                  all_channels=None):
+        """all_channels = liste de (name, alpha, beta, command) pour Fz,C3,Cz,C4."""
         self._state = state
         self._alpha = alpha
         self._beta = beta
         self._command = command
+        self._all_channels = all_channels
         self.update()
 
     def paintEvent(self, event):
@@ -125,17 +133,30 @@ class HandStateWidget(QtWidgets.QWidget):
         painter.fillRect(self.rect(), bg_color)
 
         # Texte principal (grand)
-        painter.setFont(QtGui.QFont("Segoe UI", 18, QtGui.QFont.Weight.Bold))
+        painter.setFont(QtGui.QFont("Segoe UI", 16, QtGui.QFont.Weight.Bold))
         painter.setPen(text_color)
-        painter.drawText(QtCore.QRectF(0, 10, w, 40),
+        painter.drawText(QtCore.QRectF(0, 8, w, 32),
                          QtCore.Qt.AlignmentFlag.AlignCenter, text)
 
-        # Valeurs alpha/beta/commande (petit)
-        painter.setFont(QtGui.QFont("Consolas", 9))
+        # Valeurs alpha/beta/commande pour C3 (principal)
+        painter.setFont(QtGui.QFont("Consolas", 8))
         painter.setPen(QtGui.QColor("#ccc"))
-        info = f"alpha={self._alpha:.4f}  beta={self._beta:.4f}  cmd={self._command:+.4f}"
-        painter.drawText(QtCore.QRectF(0, 50, w, 20),
+        info = f"C3: alpha={self._alpha:.2f} beta={self._beta:.2f} cmd={self._command:+.3f}"
+        painter.drawText(QtCore.QRectF(0, 40, w, 16),
                          QtCore.Qt.AlignmentFlag.AlignCenter, info)
+
+        # Valeurs pour les autres canaux (Fz, Cz, C4)
+        y_off = 56
+        if hasattr(self, "_all_channels") and self._all_channels:
+            for name, a, b, c in self._all_channels:
+                if name == "C3":
+                    continue  # deja affiche ci-dessus
+                painter.setFont(QtGui.QFont("Consolas", 8))
+                painter.setPen(QtGui.QColor("#aaa"))
+                line = f"{name}: a={a:.2f} b={b:.2f} cmd={c:+.3f}"
+                painter.drawText(QtCore.QRectF(0, y_off, w, 14),
+                                 QtCore.Qt.AlignmentFlag.AlignCenter, line)
+                y_off += 14
 
         painter.end()
 
@@ -386,41 +407,6 @@ class AmplitudeBarsWidget(pg.PlotWidget):
 
 
 # ======================================================================
-#  NODE : DashboardSink (capture alpha/beta/commande/etat pour l'UI)
-# ======================================================================
-class DashboardSink(gp.INode):
-    """Node gpype qui capture alpha, beta, commande, etat pour l'UI."""
-
-    def __init__(self):
-        from gpype.backend.core.i_port import IPort
-        import ioiocore as ioc
-        input_ports = [IPort.Configuration(name=ioc.Constants.Defaults.PORT_IN)]
-        super().__init__(input_ports=input_ports)
-        self._alpha = 0.0
-        self._beta = 0.0
-        self._command = 0.0
-        self._state = 0.0
-        self._lock = threading.Lock()
-
-    def step(self, data):
-        raw = data.get("in")
-        if raw is None:
-            raw = data.get("data")
-        if raw is not None and len(raw) > 0:
-            last = np.asarray(raw)[-1]
-            if len(last) >= 4:
-                with self._lock:
-                    self._alpha = float(last[0])
-                    self._beta = float(last[1])
-                    self._command = float(last[2])
-                    self._state = float(last[3])
-
-    def get_values(self):
-        with self._lock:
-            return self._alpha, self._beta, self._command, self._state
-
-
-# ======================================================================
 #  CLASSE PRINCIPALE : DiagnosticApp (utilise gp.MainApp natif)
 # ======================================================================
 class DiagnosticApp:
@@ -523,7 +509,6 @@ class DiagnosticApp:
         # --- Etat interne ---
         self._pipeline = None
         self._running = False
-        self._sink = None
 
         # Timer pour rafraichir les stats (2 Hz)
         self._timer = QtCore.QTimer()
@@ -616,17 +601,15 @@ class DiagnosticApp:
     def _build_and_start(self, mode, sn):
         """Construit le pipeline gpype et le demarre.
 
-        Pipeline complet :
+        Pipeline simple (evite les problemes de buffer) :
           source -> Bandpass 1-30 Hz + Notch 50/60 Hz -> Scope EEG (8 canaux)
-                 -> selection C3 -> alpha (8-12 Hz) + beta (13-30 Hz)
-                 -> commande = (beta - alpha) / (alpha + beta + 1)
-                 -> etat = sign(commande) ou LDA si calibration
-                 -> DashboardSink (capture pour l'UI)
+
+        Les calculs alpha/beta/etat sont faits en numpy dans _refresh_stats
+        directement depuis le buffer du scope, sur 4 canaux (Fz, C3, Cz, C4).
         """
         p = gp.Pipeline()
 
         # frame_size equilibre : pas trop petit (overflow) ni trop grand (underrun)
-        # 5 samples/cycle = 50 cycles/s (bon compromis pour le Bluetooth)
         FRAME_SIZE = 5
 
         if sn == "__sim__":
@@ -650,61 +633,6 @@ class DiagnosticApp:
         p.connect(bandpass, notch50)
         p.connect(notch50, notch60)
         p.connect(notch60, self.gp_scope)
-
-        # --- Pipeline BCI : alpha/beta sur C3 ---
-        # Selection du canal moteur C3
-        select_c3 = gp.Router(input_channels=gp.Router.ALL,
-                              output_channels={"c3": [MOTOR_CHANNEL]})
-        p.connect(notch60, select_c3)
-
-        # Puissance ALPHA (8-12 Hz) : bande -> carre -> moyenne glissante 1 s
-        alpha_band = gp.Bandpass(f_lo=8, f_hi=12)
-        alpha_pow = gp.Equation("in**2")
-        alpha_avg = gp.MovingAverage(window_size=250)
-        p.connect(select_c3["c3"], alpha_band)
-        p.connect(alpha_band, alpha_pow)
-        p.connect(alpha_pow, alpha_avg)
-
-        # Puissance BETA (13-30 Hz)
-        beta_band = gp.Bandpass(f_lo=13, f_hi=30)
-        beta_pow = gp.Equation("in**2")
-        beta_avg = gp.MovingAverage(window_size=250)
-        p.connect(select_c3["c3"], beta_band)
-        p.connect(beta_band, beta_pow)
-        p.connect(beta_pow, beta_avg)
-
-        # Commande = (beta - alpha) / (alpha + beta + 1)
-        command = gp.Equation("(b - a) / (a + b + 1)")
-        p.connect(alpha_avg, command["a"])
-        p.connect(beta_avg, command["b"])
-
-        # Etat binaire : +1 = FERME, -1 = OUVERT
-        calib = load_calibration()
-        if calib is not None:
-            wa, wb, bias = calib
-            print(f"Calibration LDA chargee : etat = sign({wa:.4g}*a + {wb:.4g}*b + {bias:.4g})")
-            etat = gp.Equation(f"sign(({wa!r})*a + ({wb!r})*b + ({bias!r}))")
-            p.connect(alpha_avg, etat["a"])
-            p.connect(beta_avg, etat["b"])
-        else:
-            print("Pas de calibration : etat = sign(commande).")
-            etat = gp.Equation("sign(c)")
-            p.connect(command, etat["c"])
-
-        # Merger [alpha, beta, commande, etat] pour le DashboardSink
-        merger = gp.Router(
-            input_channels={"alpha": [0], "beta": [0],
-                            "commande": [0], "etat": [0]},
-            output_channels=[gp.Router.ALL],
-        )
-        p.connect(alpha_avg, merger["alpha"])
-        p.connect(beta_avg, merger["beta"])
-        p.connect(command, merger["commande"])
-        p.connect(etat, merger["etat"])
-
-        # Sink custom pour capturer les valeurs pour l'UI
-        self._sink = DashboardSink()
-        p.connect(merger, self._sink)
 
         # Demarrage
         p.start()
@@ -734,7 +662,16 @@ class DiagnosticApp:
         self.btn_stop.setEnabled(False)
 
     def _refresh_stats(self):
-        """Calcule les stats depuis le _data_buffer du scope gpype natif."""
+        """Calcule les stats depuis le _data_buffer du scope gpype natif.
+
+        Calcule pour les 8 canaux :
+          - std(diff) pour la qualite d'impedance
+        Calcule pour 4 canaux (Fz, C3, Cz, C4) :
+          - puissance alpha (8-12 Hz) via FFT
+          - puissance beta (13-30 Hz) via FFT
+          - commande = (beta - alpha) / (alpha + beta + 1)
+        L'etat de la main est base sur C3 (canal moteur main droite).
+        """
         if not self._running:
             return
 
@@ -743,7 +680,8 @@ class DiagnosticApp:
             return
 
         eeg = buf[:, :8]
-        # std(diff) pour retirer la derive DC
+
+        # --- Qualite d'impedance (8 canaux) ---
         std_vals = [float(np.std(np.diff(eeg[:, ch]))) for ch in range(8)]
         median_std = max(float(np.median(std_vals)), 1e-6)
 
@@ -776,10 +714,49 @@ class DiagnosticApp:
         for ch in range(8):
             self.head_map.set_quality(ch, stats[ch][2])
 
-        # --- Etat de la main (from DashboardSink) ---
-        if self._sink is not None:
-            alpha, beta, cmd, etat = self._sink.get_values()
-            self.hand_state.set_state(etat, alpha, beta, cmd)
+        # --- Calcul alpha/beta via FFT sur 4 canaux (Fz, C3, Cz, C4) ---
+        n = eeg.shape[0]
+        window = np.hanning(n)
+        freqs = np.fft.rfftfreq(n, d=1.0 / FS)
+
+        alpha_powers = []
+        beta_powers = []
+        for ch_idx in ANALYZED_CHANNELS:
+            sig = eeg[:, ch_idx] * window
+            fft = np.abs(np.fft.rfft(sig))
+            # Puissance alpha (8-12 Hz)
+            alpha_mask = (freqs >= 8) & (freqs <= 12)
+            alpha_pow = float(np.sum(fft[alpha_mask] ** 2)) if np.any(alpha_mask) else 0.0
+            # Puissance beta (13-30 Hz)
+            beta_mask = (freqs >= 13) & (freqs <= 30)
+            beta_pow = float(np.sum(fft[beta_mask] ** 2)) if np.any(beta_mask) else 0.0
+            alpha_powers.append(alpha_pow)
+            beta_powers.append(beta_pow)
+
+        # Etat de la main base sur C3 (index 1 dans ANALYZED_CHANNELS)
+        c3_idx = 1  # C3 est le 2e canal analyse
+        alpha_c3 = alpha_powers[c3_idx]
+        beta_c3 = beta_powers[c3_idx]
+        command_c3 = (beta_c3 - alpha_c3) / (alpha_c3 + beta_c3 + 1e-10)
+
+        calib = load_calibration()
+        if calib is not None:
+            wa, wb, bias = calib
+            etat = 1.0 if (wa * alpha_c3 + wb * beta_c3 + bias) >= 0 else -1.0
+        else:
+            etat = 1.0 if command_c3 >= 0 else -1.0
+
+        # Prepare les valeurs pour les 4 canaux
+        all_ch = []
+        for i, name in enumerate(ANALYZED_NAMES):
+            a = alpha_powers[i]
+            b = beta_powers[i]
+            cmd = (b - a) / (a + b + 1e-10)
+            all_ch.append((name, a, b, cmd))
+
+        # Mise a jour du widget main (avec valeurs C3 + tous les canaux)
+        self.hand_state.set_state(etat, alpha_c3, beta_c3, command_c3,
+                                  all_channels=all_ch)
 
     def run(self):
         """Lance l'application gpype native (bloquant jusqu'a fermeture)."""
