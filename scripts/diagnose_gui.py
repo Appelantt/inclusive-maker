@@ -48,6 +48,13 @@ CALIB_PATH = os.path.join(os.path.dirname(__file__), "..", "config", "calibratio
 ANALYZED_CHANNELS = [0, 1, 2, 3]  # Fz, C3, Cz, C4
 ANALYZED_NAMES = ["Fz", "C3", "Cz", "C4"]
 
+# Nombre de tests de calibration (2 "FERMER" + 2 "OUVRIR" = 4 tests)
+CALIB_TRIES = 4
+# Duree d'une consigne de calibration (secondes)
+CALIB_CUE_DUR = 5.0
+CALIB_REST_DUR = 3.0
+CALIB_PREP_DUR = 3.0
+
 ELECTRODE_POS = {
     "Fz":  (0.50, 0.18),
     "C3":  (0.26, 0.46),
@@ -404,6 +411,338 @@ class AmplitudeBarsWidget(pg.PlotWidget):
             self.addItem(bar)
 
         self.setXRange(0, max(max_norm * 1.2, 1.5))
+
+
+# ======================================================================
+#  FENETRE DE CALIBRATION GUIDE
+# ======================================================================
+class CalibrationDialog(QtWidgets.QDialog):
+    """Fenetre de calibration guidee : 4 tests (2 fermer + 2 ouvrir).
+
+    L'utilisateur imagine fermer/ouvrir la main, on enregistre les
+    puissances alpha/beta sur C3, puis on entraine un LDA.
+    Si la calibration echoue (precision < 60%), on annule tout.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Calibration - Inclusive Maker")
+        self.setModal(True)
+        self.resize(600, 400)
+        self.setStyleSheet("background-color: #1a1a1a; color: #e0e0e0;")
+
+        self._pipeline = None
+        self._scope = None
+        self._running = False
+        self._phase = "idle"  # idle, prep, fermer, ouvrir, repos, done, failed
+        self._phase_start = 0
+        self._test_num = 0
+        self._schedule = []  # (t_start, t_end, label) 1=FERMER, 0=OUVRIR
+        self._t0 = 0
+
+        # Label d'instruction (grand)
+        self.instruction_label = QtWidgets.QLabel("Preparation...")
+        self.instruction_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.instruction_label.setFont(QtGui.QFont("Segoe UI", 24, QtGui.QFont.Weight.Bold))
+        self.instruction_label.setStyleSheet("color: #fff; padding: 20px;")
+
+        # Compte a rebours
+        self.countdown_label = QtWidgets.QLabel("")
+        self.countdown_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.countdown_label.setFont(QtGui.QFont("Segoe UI", 48, QtGui.QFont.Weight.Bold))
+        self.countdown_label.setStyleSheet("color: #00d4ff;")
+
+        # Progression
+        self.progress_bar = QtWidgets.QProgressBar()
+        self.progress_bar.setRange(0, CALIB_TRIES)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setStyleSheet(
+            "QProgressBar { background: #333; border: 1px solid #555; border-radius: 4px; }"
+            "QProgressBar::chunk { background: #27ae60; }"
+        )
+
+        # Bouton demarrer
+        self.btn_start = QtWidgets.QPushButton("Demarrer la calibration")
+        self.btn_start.setStyleSheet(
+            "QPushButton { background-color: #27ae60; color: white; border: none; "
+            "padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: bold; }"
+            "QPushButton:hover { background-color: #27ae60cc; }"
+        )
+        self.btn_start.clicked.connect(self._start_calibration)
+
+        # Layout
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.addWidget(self.instruction_label, stretch=1)
+        layout.addWidget(self.countdown_label, stretch=2)
+        layout.addWidget(self.progress_bar)
+        layout.addWidget(self.btn_start)
+
+        # Timer pour le compte a rebours
+        self._timer = QtCore.QTimer()
+        self._timer.timeout.connect(self._tick)
+        self._timer.start(100)  # 10 Hz
+
+    def _set_phase(self, phase):
+        self._phase = phase
+        self._phase_start = time.time()
+
+    def _start_calibration(self):
+        """Demarre le pipeline et la sequence de calibration."""
+        self.btn_start.setEnabled(False)
+
+        # Construire le pipeline gpype (source -> filtre -> scope)
+        try:
+            self._pipeline = gp.Pipeline()
+            FRAME_SIZE = 5
+            devices = list_serials()
+
+            if not devices:
+                QtWidgets.QMessageBox.warning(self, "Erreur",
+                    "Aucun casque Unicorn detecte.\n"
+                    "Allume le casque et relance l'application.")
+                self.reject()
+                return
+
+            # Essayer chaque casque
+            connected = False
+            for sn in devices:
+                print(f"Calibration: tentative {sn}...")
+                try:
+                    source = gp.HybridBlack(serial=sn, frame_size=FRAME_SIZE)
+                    bandpass = gp.Bandpass(f_lo=1, f_hi=30)
+                    notch50 = gp.Bandstop(f_lo=48, f_hi=52)
+                    notch60 = gp.Bandstop(f_lo=58, f_hi=62)
+                    self._scope = gp.TimeSeriesScope(
+                        amplitude_limit=100, time_window=2, name="calib")
+                    self._pipeline.connect(source, bandpass)
+                    self._pipeline.connect(bandpass, notch50)
+                    self._pipeline.connect(notch50, notch60)
+                    self._pipeline.connect(notch60, self._scope)
+                    self._pipeline.start()
+                    connected = True
+                    print(f"Calibration: connecte a {sn}")
+                    break
+                except Exception as e:
+                    print(f"  {sn} ne repond pas: {e}")
+                    self._pipeline = None
+                    continue
+
+            if not connected:
+                QtWidgets.QMessageBox.warning(self, "Erreur",
+                    "Aucun casque n'a repondu.\n"
+                    "Allume le casque, ferme Unicorn Suite, et relance.")
+                self.reject()
+                return
+
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(self, "Erreur", f"Connexion impossible:\n{e}")
+            self.reject()
+            return
+
+        self._running = True
+        self._t0 = time.time()
+        self._test_num = 0
+        self._schedule = []
+
+        # Phase preparation
+        self._set_phase("prep")
+        self.instruction_label.setText("Preparation...")
+        self.instruction_label.setStyleSheet("color: #fff; padding: 20px;")
+        self.countdown_label.setText(f"{int(CALIB_PREP_DUR)}")
+
+    def _tick(self):
+        """Met a jour l'affichage et la sequence de calibration."""
+        if not self._running:
+            return
+
+        elapsed = time.time() - self._phase_start
+
+        if self._phase == "prep":
+            remaining = max(0, int(CALIB_PREP_DUR - elapsed))
+            self.countdown_label.setText(str(remaining))
+            if elapsed >= CALIB_PREP_DUR:
+                self._next_test()
+
+        elif self._phase == "fermer":
+            remaining = max(0, int(CALIB_CUE_DUR - elapsed))
+            self.countdown_label.setText(str(remaining))
+            if elapsed >= CALIB_CUE_DUR:
+                # Enregistrer la plage
+                ts = self._phase_start - self._t0 + 1.5  # skip 1.5s debut
+                te = time.time() - self._t0
+                self._schedule.append((ts, te, 1))  # 1 = FERMER
+                self._set_phase("repos")
+                self.instruction_label.setText("Repos...")
+                self.instruction_label.setStyleSheet("color: #aaa; padding: 20px;")
+                self.countdown_label.setText(f"{int(CALIB_REST_DUR)}")
+
+        elif self._phase == "ouvrir":
+            remaining = max(0, int(CALIB_CUE_DUR - elapsed))
+            self.countdown_label.setText(str(remaining))
+            if elapsed >= CALIB_CUE_DUR:
+                ts = self._phase_start - self._t0 + 1.5
+                te = time.time() - self._t0
+                self._schedule.append((ts, te, 0))  # 0 = OUVRIR
+                self._set_phase("repos")
+                self.instruction_label.setText("Repos...")
+                self.instruction_label.setStyleSheet("color: #aaa; padding: 20px;")
+                self.countdown_label.setText(f"{int(CALIB_REST_DUR)}")
+
+        elif self._phase == "repos":
+            remaining = max(0, int(CALIB_REST_DUR - elapsed))
+            self.countdown_label.setText(str(remaining))
+            if elapsed >= CALIB_REST_DUR:
+                self._next_test()
+
+        elif self._phase == "done":
+            if elapsed >= 1:
+                self._finish_calibration()
+
+    def _next_test(self):
+        """Passe au test suivant (alternance FERMER / OUVRIR)."""
+        self._test_num += 1
+        self.progress_bar.setValue(self._test_num)
+
+        if self._test_num > CALIB_TRIES:
+            self._set_phase("done")
+            self.instruction_label.setText("Calibration terminee !")
+            self.instruction_label.setStyleSheet("color: #27ae60; padding: 20px;")
+            self.countdown_label.setText("")
+            return
+
+        if self._test_num % 2 == 1:
+            # Tests impairs = FERMER
+            self._set_phase("fermer")
+            self.instruction_label.setText(">>> IMAGINE FERMER LA MAIN <<<")
+            self.instruction_label.setStyleSheet("color: #c0392b; padding: 20px;")
+        else:
+            # Tests pairs = OUVRIR
+            self._set_phase("ouvrir")
+            self.instruction_label.setText("<<< IMAGINE OUVRIR LA MAIN >>>")
+            self.instruction_label.setStyleSheet("color: #27ae60; padding: 20px;")
+        self.countdown_label.setText(f"{int(CALIB_CUE_DUR)}")
+
+    def _finish_calibration(self):
+        """Arrete le pipeline, entraine le LDA, sauvegarde ou annule."""
+        self._running = False
+        if self._pipeline:
+            try:
+                self._pipeline.stop()
+            except Exception:
+                pass
+            self._pipeline = None
+
+        # Recuperer les donnees du buffer du scope
+        buf = self._scope._data_buffer if self._scope else None
+        if buf is None or buf.shape[0] < 100:
+            QtWidgets.QMessageBox.warning(self, "Erreur",
+                "Pas assez de donnees enregistrees.\nLa calibration a echoue.")
+            self._phase = "failed"
+            self.reject()
+            return
+
+        # Calculer alpha/beta via FFT sur C3 pour chaque fenetre etiquetee
+        eeg = buf[:, :8]
+        n_total = eeg.shape[0]
+        t_total = n_total / FS
+        # Temps de chaque sample (relatif au debut)
+        t_samples = np.arange(n_total) / FS
+
+        X = []
+        y = []
+        for (ts, te, label) in self._schedule:
+            # Indices des samples dans la plage [ts, te]
+            mask = (t_samples >= ts) & (t_samples < te)
+            idx = np.where(mask)[0]
+            if len(idx) < 50:
+                continue
+            # Sous-echantillonnage : fenetres de 250 samples glissantes
+            for i in range(0, len(idx) - 250, 62):
+                window_data = eeg[idx[i]:idx[i] + 250, MOTOR_CHANNEL]
+                if len(window_data) < 250:
+                    continue
+                window_func = np.hanning(250)
+                fft = np.abs(np.fft.rfft(window_data * window_func))
+                freqs = np.fft.rfftfreq(250, d=1.0 / FS)
+                alpha_mask = (freqs >= 8) & (freqs <= 12)
+                beta_mask = (freqs >= 13) & (freqs <= 30)
+                a = float(np.sum(fft[alpha_mask] ** 2))
+                b = float(np.sum(fft[beta_mask] ** 2))
+                X.append([a, b])
+                y.append(label)
+
+        X = np.array(X)
+        y = np.array(y)
+
+        print(f"Calibration: {len(y)} echantillons "
+              f"(fermer={int(np.sum(y==1))}, ouvrir={int(np.sum(y==0))})")
+
+        if len(np.unique(y)) < 2 or len(y) < 10:
+            QtWidgets.QMessageBox.warning(self, "Calibration echouee",
+                "Pas assez de donnees exploitables.\n"
+                "Assure-toi que le casque est bien positionne\n"
+                "et que les electrodes C3 repondent (vert).")
+            self._phase = "failed"
+            self.reject()
+            return
+
+        # Entrainement LDA
+        try:
+            from sklearn.preprocessing import StandardScaler
+            from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+            from sklearn.model_selection import cross_val_score
+
+            scaler = StandardScaler().fit(X)
+            Xs = scaler.transform(X)
+            lda = LinearDiscriminantAnalysis()
+            try:
+                cv = cross_val_score(lda, Xs, y, cv=min(5, np.bincount(y).min()))
+                acc = float(np.mean(cv))
+            except Exception:
+                acc = 0.5
+            lda.fit(Xs, y)
+
+            coef = lda.coef_[0]
+            wa = float(coef[0] / scaler.scale_[0])
+            wb = float(coef[1] / scaler.scale_[1])
+            bias = float(lda.intercept_[0]
+                         - coef[0] * scaler.mean_[0] / scaler.scale_[0]
+                         - coef[1] * scaler.mean_[1] / scaler.scale_[1])
+
+            print(f"Calibration: precision = {acc*100:.0f}%")
+
+            # Verifier que la precision est suffisante (> 60%)
+            if acc < 0.60:
+                QtWidgets.QMessageBox.warning(self, "Calibration echouee",
+                    f"Precision trop faible : {acc*100:.0f}%\n\n"
+                    "La calibration ne permet pas de detecter\n"
+                    "correctement l'ouverture/fermeture.\n\n"
+                    "Verifie le contact des electrodes (C3 doit etre vert)\n"
+                    "et refais la calibration.")
+                self._phase = "failed"
+                self.reject()
+                return
+
+            # Sauvegarder
+            os.makedirs(os.path.dirname(CALIB_PATH), exist_ok=True)
+            with open(CALIB_PATH, "w", encoding="utf-8") as f:
+                json.dump({"wa": wa, "wb": wb, "bias": bias,
+                           "accuracy": acc, "n_samples": int(len(y)),
+                           "channel": "C3", "features": ["alpha_power", "beta_power"]},
+                          f, indent=2)
+            print(f"Calibration sauvegardee : {CALIB_PATH}")
+
+            QtWidgets.QMessageBox.information(self, "Calibration reussie !",
+                f"Precision : {acc*100:.0f}%\n"
+                f"Poids : sign({wa:.3g}*alpha + {wb:.3g}*beta + {bias:.3g})\n\n"
+                "La detection main ouverte/fermee est active.")
+            self.accept()
+
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(self, "Erreur",
+                f"Erreur pendant l'entrainement :\n{e}")
+            self._phase = "failed"
+            self.reject()
 
 
 # ======================================================================
@@ -775,6 +1114,8 @@ def main():
     )
     parser.add_argument("--sim", action="store_true", help="Demarrer en simulation")
     parser.add_argument("--serial", default=None, help="Numero de serie")
+    parser.add_argument("--skip-calib", action="store_true",
+                        help="Passer la calibration (deja calibre)")
     args = parser.parse_args()
 
     print()
@@ -784,6 +1125,51 @@ def main():
     print("  >>> Allume le casque, FERME Unicorn Suite/LSL/Recorder <<<")
     print()
 
+    app = QtWidgets.QApplication.instance()
+    if app is None:
+        app = QtWidgets.QApplication([])
+
+    # --- Phase 1 : Calibration (obligatoire sauf --skip-calib) ---
+    if not args.sim and not args.skip_calib:
+        calib = load_calibration()
+        if calib is None:
+            print("Aucune calibration trouvee. Calibration obligatoire.")
+            must_calib = True
+        else:
+            print(f"Calibration existante : precision = {calib}")
+            reponse = QtWidgets.QMessageBox.question(
+                None, "Calibration existante",
+                "Une calibration a deja ete effectuee.\n\n"
+                "Veux-tu refaire la calibration ?\n"
+                "(Non = utiliser la calibration existante)",
+                QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
+                QtWidgets.QMessageBox.StandardButton.No
+            )
+            must_calib = (reponse == QtWidgets.QMessageBox.StandardButton.Yes)
+
+        if must_calib:
+            print("Lancement de la calibration guidee (4 tests)...")
+            dialog = CalibrationDialog()
+            result = dialog.exec()
+            if result != QtWidgets.QDialog.DialogCode.Accepted:
+                print("Calibration echouee ou annulee. Le logiciel ne peut pas fonctionner.")
+                QtWidgets.QMessageBox.critical(
+                    None, "Impossible de continuer",
+                    "Sans calibration, le logiciel ne peut pas detecter\n"
+                    "l'ouverture ou la fermeture de la main.\n\n"
+                    "Verifie que :\n"
+                    "- Le casque est allume et bien positionne\n"
+                    "- L'electrode C3 est bien connectee (vert)\n"
+                    "- Unicorn Suite / LSL / Recorder sont fermes\n\n"
+                    "Puis relance l'application.")
+                return 1
+            print("Calibration reussie ! Lancement du dashboard...")
+        else:
+            print("Utilisation de la calibration existante.")
+    elif args.sim:
+        print("Mode simulation : calibration ignoree.")
+
+    # --- Phase 2 : Dashboard ---
     diag = DiagnosticApp()
 
     if args.sim:
