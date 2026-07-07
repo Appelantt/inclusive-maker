@@ -46,8 +46,9 @@ import gpype as gp  # noqa: E402
 from gpype.backend.core.node import Node  # noqa: E402
 Node._is_executed_in_ide = lambda self: True
 
-#: Casque par defaut (le 05 fonctionne).
-DEFAULT_SERIAL = "UN-2022.01.05"
+#: Casque par defaut : None = auto-detection du premier casque disponible
+#: (evite de rester bloque si un casque precis est endormi/injoignable).
+DEFAULT_SERIAL = None
 # Disposition des electrodes du casque (index 0 a 7) :
 #   0=Fz  1=C3  2=Cz  3=C4  4=Pz  5=PO7  6=PO8  7=Oz
 # C3 (index 1) = cortex moteur gauche -> imagerie de la MAIN DROITE (controlateral).
@@ -69,15 +70,57 @@ def load_calibration():
         return None
 
 
+def _setup_unicornpy():
+    """Rend UnicornPy importable (meme logique que le noeud HybridBlack)."""
+    try:
+        from gpype.backend.sources.hybrid_black import _ensure_unicorn_path
+        _ensure_unicorn_path()
+        import UnicornPy
+        return UnicornPy
+    except Exception:
+        return None
+
+
+def list_serials(preferred):
+    """Retourne la liste ordonnee des serials candidats SANS ouvrir de connexion.
+
+    IMPORTANT : on n'ouvre volontairement PAS de connexion de pre-test ici.
+    Une ouverture/fermeture prealable occupe le canal Bluetooth du casque
+    pendant plusieurs secondes et fait echouer la connexion suivante du
+    pipeline (DeviceException 4 « Couldn't connect »). On se contente donc de
+    lister les devices visibles (GetAvailableDevices) et on laisse le pipeline
+    faire la vraie connexion — avec retry si le premier candidat ne repond pas.
+    """
+    up = _setup_unicornpy()
+    if up is None:
+        return [preferred] if preferred else []
+    try:
+        devices = list(up.GetAvailableDevices(True) or [])
+    except Exception:
+        return [preferred] if preferred else []
+    if not devices:
+        return [preferred] if preferred else []
+    order = ([preferred] if preferred in devices else []) + \
+            [d for d in devices if d != preferred]
+    return order
+
+
 def make_source(mode: str, serial):
     if mode == "sim":
         print("Source : Generator interne g.Pype (simulation).")
         return gp.Generator(sampling_rate=FS, channel_count=8,
                             signal_frequency=10.0, signal_amplitude=30.0,
                             noise_amplitude=10.0)
-    print(f"Source : casque Unicorn Hybrid Black (serial={serial}).")
+    cible = serial if serial else "aucun casque detecte"
+    print(f"Source : casque Unicorn Hybrid Black ({cible}).")
     print("  -> Unicorn Suite / LSL / Recorder doivent etre FERMES.")
     return gp.HybridBlack(serial=serial)
+
+
+def _is_connect_error(exc):
+    """True si l'exception est une erreur de connexion Bluetooth casque."""
+    msg = str(exc).lower()
+    return "couldn't connect" in msg or "no unicorn device" in msg
 
 
 def build_features(p, source):
@@ -169,31 +212,91 @@ def build_bci(p, source):
     return merger
 
 
+#: Sentinel pour distinguer "mode sim" de "mode casque auto-detect" (None).
+SIM_MODE = "__sim__"
+
+
+def _run_pipeline_with_retry(build_fn, serial, run_label):
+    """Construit et demarre un pipeline en essayant chaque casque candidat.
+
+    serial peut etre :
+      - SIM_MODE   : mode simulation, un seul essai direct (pas de Bluetooth).
+      - None       : mode casque, auto-detection (scan Bluetooth des devices).
+      - "UN-xxxx"  : mode casque, serial force, un seul essai direct.
+
+    Si start() echoue avec une erreur de connexion, on nettoie et on
+    reessaie le serial suivant. Renvoie le Pipeline demarre via build_fn,
+    ou None si aucun casque n'a repondu.
+    """
+    if serial is SIM_MODE:
+        candidates = [SIM_MODE]
+    elif serial is None:
+        candidates = list_serials(None)
+        if not candidates:
+            print("  Aucun casque Unicorn detecte. Lance avec --sim pour tester sans casque.")
+            return None
+    else:
+        candidates = [serial]
+
+    last_exc = None
+    for sn in candidates:
+        if sn is not SIM_MODE:
+            print(f"  Tentative de connexion au casque {sn} ...")
+        try:
+            return build_fn(sn)
+        except Exception as e:
+            last_exc = e
+            if _is_connect_error(e):
+                print(f"  {sn} ne repond pas, essai suivant...")
+                continue
+            raise
+    print("  Aucun casque n'a repondu apres avoir essaye tous les serials.")
+    if last_exc:
+        raise last_exc
+    return None
+
+
 def run_scope(mode: str, serial):
     app = gp.MainApp()
-    p = gp.Pipeline()
-    source = make_source(mode, serial)
-    merger = build_bci(p, source)
-    scope = gp.TimeSeriesScope(amplitude_limit=1.5, time_window=10)
-    p.connect(merger, scope)
-    app.add_widget(scope)
-    print("Fenetre temps reel : alpha%, beta%, commande, et ETAT.")
-    print("  ETAT (courbe binaire) : +1 = FERME, -1 = OUVERT (2 fonctions seulement).")
-    print("(ferme la fenetre pour arreter)")
-    p.start()
+
+    def build_and_start(sn):
+        p = gp.Pipeline()
+        # En mode sim, sn == SIM_MODE -> make_source utilise Generator.
+        source = make_source(mode, sn if sn is not SIM_MODE else None)
+        merger = build_bci(p, source)
+        scope = gp.TimeSeriesScope(amplitude_limit=1.5, time_window=10)
+        p.connect(merger, scope)
+        app.add_widget(scope)
+        print("Fenetre temps reel : alpha%, beta%, commande, et ETAT.")
+        print("  ETAT (courbe binaire) : +1 = FERME, -1 = OUVERT (2 fonctions seulement).")
+        print("(ferme la fenetre pour arreter)")
+        p.start()
+        return p
+
+    arg = SIM_MODE if mode == "sim" else serial
+    p = _run_pipeline_with_retry(build_and_start, arg, "scope")
+    if p is None:
+        return
     app.run()
     p.stop()
     print("Pipeline arrete.")
 
 
 def run_record(mode, serial, seconds, out_csv):
-    p = gp.Pipeline()
-    source = make_source(mode, serial)
-    merger = build_bci(p, source)
-    sink = gp.CsvWriter(file_name=out_csv)
-    p.connect(merger, sink)
-    p.start()
-    print(f"Enregistrement (C3, alpha, beta, commande) pendant {seconds:.0f} s...")
+    def build_and_start(sn):
+        p = gp.Pipeline()
+        source = make_source(mode, sn if sn is not SIM_MODE else None)
+        merger = build_bci(p, source)
+        sink = gp.CsvWriter(file_name=out_csv)
+        p.connect(merger, sink)
+        p.start()
+        print(f"Enregistrement (C3, alpha, beta, commande) pendant {seconds:.0f} s...")
+        return p
+
+    arg = SIM_MODE if mode == "sim" else serial
+    p = _run_pipeline_with_retry(build_and_start, arg, "record")
+    if p is None:
+        return
     time.sleep(seconds)
     p.stop()
     print(f"[OK] Donnees ecrites (fichier horodate a cote de {out_csv}).")
